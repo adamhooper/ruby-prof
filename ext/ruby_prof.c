@@ -948,11 +948,11 @@ pop_frame(thread_data_t *thread_data, prof_measure_t now)
   prof_measure_t total_time;
 
   frame = stack_pop(thread_data->stack);
-    
+
   /* Frame can be null.  This can happen if RubProf.start is called from
      a method that exits.  And it can happen if an exception is raised
      in code that is being profiled and the stack unwinds (RubProf is
-     not notified of that by the ruby runtime. */
+     not notified of that by the ruby runtime.) */
   if (frame == NULL) return NULL;
 
   /* Calculate the total time this method took */
@@ -998,6 +998,44 @@ prof_pop_threads()
     st_foreach(threads_tbl, pop_frames, (st_data_t) &now);
 }
 
+static int
+should_ignore_method(VALUE klass, ID mid)
+{
+    const char *class_name = rb_class2name(klass);
+    const char *method_name = rb_id2name(mid);
+    int i;
+
+    /* Skip if this method is in RubyProf::ignore_methods */
+    if (NIL_P(rb_check_array_type(ignore_methods))) {
+        ignore_methods = rb_ary_new();
+    }
+    for (i = 0; i < RARRAY(ignore_methods)->len; i++) {
+        VALUE ignore_method = rb_ary_entry(ignore_methods, i);
+        const char *ignore_method_p = RSTRING(ignore_method)->ptr;
+        const char *class_name_p = class_name;
+        const char *method_name_p = method_name;
+
+        if (!class_name_p || !method_name_p) continue;
+
+        while (*ignore_method_p && *class_name_p && (*ignore_method_p == *class_name_p)) {
+            ignore_method_p++;
+            class_name_p++;
+        }
+        if (*class_name_p != '\0' || *ignore_method_p != '#') {
+            continue;
+        }
+        ignore_method_p++;
+        while (*ignore_method_p && *method_name_p && (*ignore_method_p == *method_name_p)) {
+            ignore_method_p++;
+            method_name_p++;
+        }
+        if (*ignore_method_p != '\0' || *method_name_p != '\0') {
+            continue;
+        }
+        return 1; // we matched exactly
+    }
+    return 0;
+}
 
 #ifdef RUBY_VM
 static void
@@ -1059,6 +1097,8 @@ prof_event_hook(rb_event_flag_t event, NODE *node, VALUE self, ID mid, VALUE kla
        the results but aren't important to them results. */
     if (self == mProf) return;
 
+    if (should_ignore_method(klass, mid)) return;
+
     /* Get current measurement*/
     now = get_measurement();
     
@@ -1109,7 +1149,7 @@ prof_event_hook(rb_event_flag_t event, NODE *node, VALUE self, ID mid, VALUE kla
         
         if (klass != 0)
           klass = (BUILTIN_TYPE(klass) == T_ICLASS ? RBASIC(klass)->klass : klass);
-          
+
         /* Assume this is the first time we have called this method. */
         method = get_method(event, node, klass, mid, 0, thread_data->method_table);
 
@@ -1327,6 +1367,31 @@ prof_set_measure_mode(VALUE self, VALUE val)
     }
     
     measure_mode = mode;
+    return val;
+}
+
+/* call-seq:
+   ignore_methods -> ignore_methods
+
+   Returns Array of Strings, each a method ruby-prof will ignore when profiling.
+
+   Popular choices are "Array#each" and "Kernel#send".*/
+static VALUE
+prof_get_ignore_methods(VALUE self)
+{
+    return ignore_methods;
+}
+
+/* call-seq:
+   ignore_methods=value -> value
+
+   Specifies which methods ruby-prof should ignore. For instance:
+
+   [ 'Array#each', 'Kernel#send' ] */
+static VALUE
+prof_set_ignore_methods(VALUE self, VALUE val)
+{
+    ignore_methods = val;
     return val;
 }
 
@@ -1603,6 +1668,8 @@ Init_ruby_prof()
     rb_define_singleton_method(mProf, "exclude_threads=", prof_set_exclude_threads, 1);
     rb_define_singleton_method(mProf, "measure_mode", prof_get_measure_mode, 0);
     rb_define_singleton_method(mProf, "measure_mode=", prof_set_measure_mode, 1);
+    rb_define_singleton_method(mProf, "ignore_methods", prof_get_ignore_methods, 0);
+    rb_define_singleton_method(mProf, "ignore_methods=", prof_set_ignore_methods, 1);
 
     rb_define_const(mProf, "CLOCKS_PER_SEC", INT2NUM(CLOCKS_PER_SEC));
     rb_define_const(mProf, "PROCESS_TIME", INT2NUM(MEASURE_PROCESS_TIME));

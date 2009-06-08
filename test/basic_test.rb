@@ -165,6 +165,32 @@ class BasicTest < Test::Unit::TestCase
     assert_in_delta(0, methods[5].self_time, 0.01)
   end
 
+  def test_ignore_method_in_instance_methods
+    RubyProf::ignore_methods = [ 'Array#each' ]
+    result = RubyProf.profile do
+      [1].each do |i|
+        C1.new.hello
+      end
+    end
+
+    # Methods called
+    #   BasicTest#test_ignore_method_in_instance_methods
+    #   Array#each -- ignored!
+    #   Class.new
+    #   Class:Object#allocate
+    #   for Object#initialize
+    #   C1#hello
+    #   Kernel#sleep
+
+    methods = result.threads.values.first.sort.reverse
+    assert_equal(6, methods.length)
+
+    assert_equal('BasicTest#test_ignore_method_in_instance_methods', methods[0].full_name)
+    assert_equal('C1#hello', methods[1].full_name)
+  ensure
+    RubyProf::ignore_methods = []
+  end
+
   def test_module_methods
     result = RubyProf.profile do
       C2.hello

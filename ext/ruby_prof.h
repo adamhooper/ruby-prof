@@ -172,6 +172,7 @@ typedef struct {
 
 /* ================  Variables  =================*/
 static int measure_mode;
+static VALUE ignore_methods = Qnil;
 static st_table *threads_tbl = NULL;
 static st_table *exclude_threads_tbl = NULL;
 

@@ -51,6 +51,7 @@ options.min_percent = 0
 options.file = nil
 options.replace_prog_name = false
 options.specialized_instruction = false
+options.ignore_methods = []
 
 opts = OptionParser.new do |opts|
   opts.banner = "ruby_prof #{RubyProf::VERSION}\n" +
@@ -120,6 +121,12 @@ opts = OptionParser.new do |opts|
         options.measure_mode = RubyProf::GC_TIME
       end
   end
+
+  opts.on("--ignore-methods=ignore_methods",
+      'Comma-separated list of methods to ignore',
+      '  e.g. "--ignore-methods=Array#each,Kernel#send"') do |s|
+    options.ignore_methods = options.ignore_methods.concat(s.split(/,/))
+  end
         
   opts.on("--replace-progname", "Replace $0 when loading the .rb files.") do
           options.replace_prog_name = true
@@ -185,6 +192,9 @@ at_exit {
 
 # Now set measure mode
 RubyProf.measure_mode = options.measure_mode
+
+# And ignore_methods
+RubyProf.ignore_methods = options.ignore_methods
 
 # Set VM compile option
 if defined?(VM)
